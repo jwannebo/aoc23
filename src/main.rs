@@ -3,6 +3,8 @@ use std::io::Read;
 use aho_corasick::*;
 use clap::Parser;
 use regex::*;
+use std::collections::*;
+use std::ops::Range;
 
 /// Program that solves Advent of Code 2023 problems
 #[derive(Parser, Debug)]
@@ -21,7 +23,7 @@ struct Args {
     file: clio::Input,
 }
 
-const MAX_PROBLEM: u8 = 2;
+const MAX_PROBLEM: u8 = 3;
 
 fn main() {
     let mut args = Args::parse();
@@ -48,6 +50,13 @@ fn main() {
                     println!("{}", problem_2a(&input))
                 } else {
                     println!("{}", problem_2b(&input))
+                }
+            }
+            3 => {
+                if !args.subproblem {
+                    println!("{}", problem_3a(&input))
+                } else {
+                    println!("{}", problem_3b(&input))
                 }
             }
             _ => {}
@@ -179,6 +188,83 @@ fn problem_2b(input: &str) -> u64 {
     sum
 }
 
+fn catalog_numbers_3(input: &str) -> Vec<Vec<Range<usize>>> {
+    let re = Regex::new(r"\d+").unwrap();
+
+    input
+        .lines()
+        .map(|row| re.find_iter(row).map(|m| m.range()).collect())
+        .collect()
+}
+
+fn find_adjacant_numbers_3(
+    row_number: usize,
+    column_number: usize,
+    number_catalog: &[Vec<Range<usize>>],
+) -> Vec<(usize, (usize, usize))> {
+    let mut vec = Vec::new();
+    for (number_row, numbers) in number_catalog.iter().enumerate() {
+        if (row_number - 1..=row_number + 1).contains(&number_row) {
+            for number_range in numbers {
+                let expanded_range = (1.max(number_range.start) - 1)..(number_range.end + 1);
+                if expanded_range.contains(&column_number) {
+                    vec.push((number_row, (number_range.start, number_range.end)));
+                }
+            }
+        }
+    }
+    vec
+}
+
+fn problem_3a(input: &str) -> u64 {
+    let symbols = ['%', '+', '=', '$', '@', '#', '/', '*', '&', '-'];
+
+    let mut sum = 0;
+    let number_catalog = catalog_numbers_3(input);
+    let mut to_process: HashSet<(usize, (usize, usize))> = HashSet::new();
+
+    let rows: Vec<_> = input.lines().collect();
+
+    for (row_number, &line) in rows.iter().enumerate() {
+        for (column_number, _) in line.match_indices(symbols) {
+            to_process.extend(find_adjacant_numbers_3(
+                row_number,
+                column_number,
+                &number_catalog,
+            ));
+        }
+    }
+
+    for (row, range) in to_process {
+        let tmp = &rows[row][range.0..range.1];
+        // println!("{}", tmp);
+        sum += tmp.parse::<u64>().unwrap();
+    }
+    sum
+}
+fn problem_3b(input: &str) -> u64 {
+    let mut sum = 0;
+    let number_catalog = catalog_numbers_3(input);
+    let rows: Vec<_> = input.lines().collect();
+
+    for (row_number, &line) in rows.iter().enumerate() {
+        for (column_number, _) in line.match_indices('*') {
+            let to_process: HashSet<(usize, (usize, usize))> = HashSet::from_iter(
+                find_adjacant_numbers_3(row_number, column_number, &number_catalog).to_owned(),
+            );
+
+            if to_process.len() == 2 {
+                let mut product = 1;
+                for (row, range) in to_process {
+                    product *= &rows[row][range.0..range.1].parse::<u64>().unwrap();
+                }
+                sum += product;
+            }
+        }
+    }
+    sum
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,5 +321,35 @@ Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
 Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
         let result = problem_2b(input);
         assert_eq!(result, 2286)
+    }
+    #[test]
+    fn test_problem_3a() {
+        let input = "467..114..
+...*......
+..35..633.
+......#...
+617*......
+.....+.58.
+..592.....
+......755.
+...$.*....
+.664.598..";
+        let result = problem_3a(input);
+        assert_eq!(result, 4361)
+    }
+    #[test]
+    fn test_problem_3b() {
+        let input = "467..114..
+...*......
+..35..633.
+......#...
+617*......
+.....+.58.
+..592.....
+......755.
+...$.*....
+.664.598..";
+        let result = problem_3b(input);
+        assert_eq!(result, 467835)
     }
 }
