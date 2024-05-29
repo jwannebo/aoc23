@@ -2,6 +2,7 @@ use std::io::Read;
 
 use aho_corasick::*;
 use clap::Parser;
+use regex::*;
 
 /// Program that solves Advent of Code 2023 problems
 #[derive(Parser, Debug)]
@@ -20,7 +21,7 @@ struct Args {
     file: clio::Input,
 }
 
-const MAX_PROBLEM: u8 = 1;
+const MAX_PROBLEM: u8 = 2;
 
 fn main() {
     let mut args = Args::parse();
@@ -40,6 +41,13 @@ fn main() {
                     println!("{}", problem_1a(&input))
                 } else {
                     println!("{}", problem_1b(&input))
+                }
+            }
+            2 => {
+                if !args.subproblem {
+                    println!("{}", problem_2a(&input))
+                } else {
+                    println!("{}", problem_2b(&input))
                 }
             }
             _ => {}
@@ -71,7 +79,7 @@ fn problem_1a(input: &str) -> u64 {
     numbers.iter().sum()
 }
 
-fn parse_digit(digit: &str) -> core::result::Result<u8, <u8 as std::str::FromStr>::Err> {
+fn parse_digit(digit: &str) -> Result<u8, <u8 as std::str::FromStr>::Err> {
     match digit {
         "one" => Ok(1),
         "two" => Ok(2),
@@ -105,6 +113,70 @@ fn problem_1b(input: &str) -> u64 {
         total += num;
     }
     total
+}
+
+struct Rgb2 {
+    red: i32,
+    green: i32,
+    blue: i32,
+}
+fn parse_rounds_2(input: &str) -> Rgb2 {
+    let re = Regex::new(r"(?<count>\d+) (?<color>red|green|blue)").unwrap();
+    let mut red = 0;
+    let mut green = 0;
+    let mut blue = 0;
+    for round in input.split(';') {
+        for (_, [count_str, color_str]) in re.captures_iter(round).map(|c| c.extract()) {
+            let count: i32 = count_str.parse().unwrap();
+            match color_str {
+                "red" => red = red.max(count),
+                "green" => green = green.max(count),
+                "blue" => blue = blue.max(count),
+                _ => panic!(),
+            }
+        }
+    }
+    Rgb2 { red, green, blue }
+}
+
+fn problem_2a(input: &str) -> u64 {
+    let max_red = 12;
+    let max_green = 13;
+    let max_blue = 14;
+
+    let mut sum = 0u64;
+
+    for line in input.lines() {
+        let game: u64 = line
+            .split(':') // Get "Game NN" and rest
+            .next()
+            .unwrap()
+            .split(' ') // Get "Game" and "NN"
+            .last()
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        let Rgb2 { red, green, blue } = parse_rounds_2(line);
+
+        if red <= max_red && green <= max_green && blue <= max_blue {
+            sum += game;
+        } else {
+            //println!("Rejecting  r: {red} g: {green} b: {blue} :'{line}'")
+        }
+    }
+
+    sum
+}
+fn problem_2b(input: &str) -> u64 {
+    let mut sum = 0u64;
+
+    for line in input.lines() {
+        let Rgb2 { red, green, blue } = parse_rounds_2(line);
+        sum += (red * green * blue) as u64;
+    }
+
+    sum
 }
 
 #[cfg(test)]
@@ -143,5 +215,25 @@ zoneight234
         let input = "oneight";
         let result = problem_1b(input);
         assert_eq!(result, 18)
+    }
+    #[test]
+    fn test_problem_2a() {
+        let input = "Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue
+Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
+Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
+Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
+        let result = problem_2a(input);
+        assert_eq!(result, 8)
+    }
+    #[test]
+    fn test_problem_2b() {
+        let input = "Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue
+Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
+Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
+Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
+        let result = problem_2b(input);
+        assert_eq!(result, 2286)
     }
 }

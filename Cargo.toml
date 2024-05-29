@@ -7,3 +7,4 @@ edition = "2021"
 aho-corasick = "1.1.3"
 clap = { version = "4.5.4", features = ["derive"] }
 clio = { version = "0.3.5", features = ["clap-parse"] }
+regex = "1.10.4"
