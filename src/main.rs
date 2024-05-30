@@ -23,7 +23,7 @@ struct Args {
     file: clio::Input,
 }
 
-const MAX_PROBLEM: u8 = 3;
+const MAX_PROBLEM: u8 = 4;
 
 fn main() {
     let mut args = Args::parse();
@@ -57,6 +57,13 @@ fn main() {
                     println!("{}", problem_3a(&input))
                 } else {
                     println!("{}", problem_3b(&input))
+                }
+            }
+            4 => {
+                if !args.subproblem {
+                    println!("{}", problem_4a(&input))
+                } else {
+                    println!("{}", problem_4b(&input))
                 }
             }
             _ => {}
@@ -265,6 +272,59 @@ fn problem_3b(input: &str) -> u64 {
     sum
 }
 
+fn get_winners_4(input: &str) -> HashMap<u32, u32> {
+    let mut winners = HashMap::new();
+    for line in input.lines() {
+        let mut total_wins = 0;
+        let splits: Vec<_> = line.split([':', '|']).collect();
+        assert_eq!(splits.len(), 3);
+        let card_number: u32 = splits[0].split(' ').last().unwrap().parse().unwrap();
+        let winning_numbers: HashSet<i32> = splits[1].split(' ').flat_map(|s| s.parse()).collect();
+        let numbers_i_have: Vec<i32> = splits[2].split(' ').flat_map(|s| s.parse()).collect();
+        for number in numbers_i_have {
+            if winning_numbers.contains(&number) {
+                total_wins += 1;
+            }
+        }
+        winners.insert(card_number, total_wins);
+        //println!("{card_number} has {total_wins} wins");
+    }
+    winners
+}
+
+fn problem_4a(input: &str) -> u64 {
+    let mut sum = 0;
+    for (_, total) in get_winners_4(input) {
+        let points = if total > 0 { 2u64.pow(total - 1) } else { 0u64 };
+        //println!("{points} points");
+        sum += points;
+    }
+
+    sum
+}
+
+fn problem_4b(input: &str) -> u64 {
+    let cards = get_winners_4(input);
+    let mut card_totals: HashMap<u32, u32> = HashMap::with_capacity(cards.len());
+    let min = cards.keys().min().unwrap_or(&0).to_owned();
+    let max = cards.keys().max().unwrap_or(&0).to_owned();
+
+    for &card in cards.keys() {
+        card_totals.insert(card, 1); // Every card starts with one copy
+    }
+
+    for card in min..=max {
+        let total = cards[&card];
+        let copies = card_totals[&card];
+        for c in card + 1..=card + total {
+            card_totals.entry(c).and_modify(|cp| *cp += copies);
+        }
+        //println!("Card {} has {} copies", card, card_totals[&card]);
+    }
+
+    card_totals.values().sum::<u32>() as u64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,5 +411,27 @@ Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green";
 .664.598..";
         let result = problem_3b(input);
         assert_eq!(result, 467835)
+    }
+    #[test]
+    fn test_problem_4a() {
+        let input = "Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53
+Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19
+Card 3:  1 21 53 59 44 | 69 82 63 72 16 21 14  1
+Card 4: 41 92 73 84 69 | 59 84 76 51 58  5 54 83
+Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36
+Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11";
+        let result = problem_4a(input);
+        assert_eq!(result, 13)
+    }
+    #[test]
+    fn test_problem_4b() {
+        let input = "Card 1: 41 48 83 86 17 | 83 86  6 31 17  9 48 53
+Card 2: 13 32 20 16 61 | 61 30 68 82 17 32 24 19
+Card 3:  1 21 53 59 44 | 69 82 63 72 16 21 14  1
+Card 4: 41 92 73 84 69 | 59 84 76 51 58  5 54 83
+Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36
+Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11";
+        let result = problem_4b(input);
+        assert_eq!(result, 30)
     }
 }
