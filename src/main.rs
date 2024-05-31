@@ -1,10 +1,12 @@
+use std::collections::*;
+use std::fmt::Display;
 use std::io::Read;
+use std::ops::{Deref, Range};
 
 use aho_corasick::*;
 use clap::Parser;
+use nutype::nutype;
 use regex::*;
-use std::collections::*;
-use std::ops::Range;
 
 /// Program that solves Advent of Code 2023 problems
 #[derive(Parser, Debug)]
@@ -23,7 +25,7 @@ struct Args {
     file: clio::Input,
 }
 
-const MAX_PROBLEM: u8 = 4;
+const MAX_PROBLEM: u8 = 5;
 
 fn main() {
     let mut args = Args::parse();
@@ -64,6 +66,13 @@ fn main() {
                     println!("{}", problem_4a(&input))
                 } else {
                     println!("{}", problem_4b(&input))
+                }
+            }
+            5 => {
+                if !args.subproblem {
+                    println!("{}", problem_5a(&input))
+                } else {
+                    println!("{}", problem_5b(&input))
                 }
             }
             _ => {}
@@ -325,6 +334,212 @@ fn problem_4b(input: &str) -> u64 {
     card_totals.values().sum::<u32>() as u64
 }
 
+struct IdMap5<Dest, Src>
+where
+    Dest: Into<u64> + From<u64> + Deref + Copy,
+    Src: Into<u64> + From<u64> + Deref + Copy,
+{
+    destination: Dest,
+    source: Src,
+    count: u64,
+}
+impl<Dest, Src> IdMap5<Dest, Src>
+where
+    Dest: Into<u64> + From<u64> + Deref + Copy,
+    Src: Into<u64> + From<u64> + Deref + Copy,
+{
+    fn contains(&self, id: &Src) -> bool {
+        (self.source.into()..self.source.into() + self.count).contains(&(*id).into())
+    }
+
+    fn map(&self, id: Src) -> Option<Dest> {
+        if self.contains(&id) {
+            Some((id.into() - self.source.into() + self.destination.into()).into())
+        } else {
+            None
+        }
+    }
+
+    fn map_chain(maps: impl IntoIterator<Item = Self>, id: u64) -> u64 {
+        maps.into_iter()
+            .flat_map(|m| m.map(id.into()))
+            .next()
+            .unwrap_or(id.into())
+            .into()
+    }
+
+    fn from_iter(iter_: impl IntoIterator<Item = u64>) -> Self {
+        let mut iter = iter_.into_iter();
+        Self {
+            destination: iter.next().unwrap_or(u64::MAX).into(),
+            source: iter.next().unwrap_or(u64::MAX).into(),
+            count: iter.next().unwrap_or(u64::MAX),
+        }
+    }
+}
+
+trait MappableId5<Dest>
+where
+    Dest:
+        Ord + PartialOrd + Eq + PartialEq + From<u64> + Into<u64> + Copy + Clone + Deref + Display,
+    Self:
+        Ord + PartialOrd + Eq + PartialEq + From<u64> + Into<u64> + Copy + Clone + Deref + Display,
+{
+    fn map(self, maps: impl IntoIterator<Item = IdMap5<Self, Dest>>) -> Dest {
+        IdMap5::map_chain(maps, self.into()).into()
+        //println!("{self} -> {tmp}");
+        //tmp
+    }
+}
+#[nutype(derive(
+    Debug, Ord, PartialOrd, Eq, PartialEq, From, Into, Copy, Clone, Deref, Display
+))]
+struct SeedID5(u64);
+#[nutype(derive(
+    Debug, Ord, PartialOrd, Eq, PartialEq, From, Into, Copy, Clone, Deref, Display
+))]
+struct SoilID5(u64);
+#[nutype(derive(
+    Debug, Ord, PartialOrd, Eq, PartialEq, From, Into, Copy, Clone, Deref, Display
+))]
+struct FertilizerID5(u64);
+#[nutype(derive(
+    Debug, Ord, PartialOrd, Eq, PartialEq, From, Into, Copy, Clone, Deref, Display
+))]
+struct WaterID5(u64);
+#[nutype(derive(
+    Debug, Ord, PartialOrd, Eq, PartialEq, From, Into, Copy, Clone, Deref, Display
+))]
+struct LightID5(u64);
+#[nutype(derive(
+    Debug, Ord, PartialOrd, Eq, PartialEq, From, Into, Copy, Clone, Deref, Display
+))]
+struct TemperatureID5(u64);
+#[nutype(derive(
+    Debug, Ord, PartialOrd, Eq, PartialEq, From, Into, Copy, Clone, Deref, Display
+))]
+struct HumidityID5(u64);
+#[nutype(derive(
+    Debug, Ord, PartialOrd, Eq, PartialEq, From, Into, Copy, Clone, Deref, Display
+))]
+struct LocationID5(u64);
+
+impl MappableId5<SoilID5> for SeedID5 {}
+impl MappableId5<FertilizerID5> for SoilID5 {}
+impl MappableId5<WaterID5> for FertilizerID5 {}
+impl MappableId5<LightID5> for WaterID5 {}
+impl MappableId5<TemperatureID5> for LightID5 {}
+impl MappableId5<HumidityID5> for TemperatureID5 {}
+impl MappableId5<LocationID5> for HumidityID5 {}
+
+fn make_map_vec<Src, Dest>(str: &str) -> Vec<IdMap5<Src, Dest>>
+where
+    Src: Ord + PartialOrd + Eq + PartialEq + From<u64> + Into<u64> + Copy + Clone + Deref,
+    Dest: Ord + PartialOrd + Eq + PartialEq + From<u64> + Into<u64> + Copy + Clone + Deref,
+{
+    str.lines()
+        .map(|line| line.split(' ').flat_map(|num| num.parse::<u64>()))
+        .map(IdMap5::from_iter)
+        .collect()
+}
+
+fn parse5(input: &str) -> Captures {
+    let re = Regex::new(
+        r"(?x)
+seeds:(?<seeds>(?:\s\d+)+)\n
+\n
+seed-to-soil\smap:\n
+(?<seed_to_soil>(?:\d+\s\d+\s\d+\n)+)
+\n
+soil-to-fertilizer\smap:\n
+(?<soil_to_fertilizer>(?:\d+\s\d+\s\d+\n)+)
+\n
+fertilizer-to-water\smap:
+\n
+(?<fertilizer_to_water>(?:\d+\s\d+\s\d+\n)+)
+\n
+water-to-light\smap:\n
+(?<water_to_light>(?:\d+\s\d+\s\d+\n)+)
+\n
+light-to-temperature\smap:\n
+(?<light_to_temperature>(?:\d+\s\d+\s\d+\n)+)
+\n
+temperature-to-humidity\smap:\n
+(?<temperature_to_humidity>(?:\d+\s\d+\s\d+\n)+)
+\n
+humidity-to-location\smap:\n
+(?<humidity_to_location>(?:\d+\s\d+\s\d+\n?)+)",
+    )
+    .unwrap();
+
+    re.captures(input).unwrap()
+}
+
+fn find_min_seed_5(captures: &Captures, seeds: impl IntoIterator<Item = SeedID5>) -> LocationID5 {
+    seeds
+        .into_iter()
+        .map(|x| x.map(make_map_vec::<SeedID5, SoilID5>(&captures["seed_to_soil"])))
+        .map(|x| {
+            x.map(make_map_vec::<SoilID5, FertilizerID5>(
+                &captures["soil_to_fertilizer"],
+            ))
+        })
+        .map(|x| {
+            x.map(make_map_vec::<FertilizerID5, WaterID5>(
+                &captures["fertilizer_to_water"],
+            ))
+        })
+        .map(|x| {
+            x.map(make_map_vec::<WaterID5, LightID5>(
+                &captures["water_to_light"],
+            ))
+        })
+        .map(|x| {
+            x.map(make_map_vec::<LightID5, TemperatureID5>(
+                &captures["light_to_temperature"],
+            ))
+        })
+        .map(|x| {
+            x.map(make_map_vec::<TemperatureID5, HumidityID5>(
+                &captures["temperature_to_humidity"],
+            ))
+        })
+        .map(|x| {
+            x.map(make_map_vec::<HumidityID5, LocationID5>(
+                &captures["humidity_to_location"],
+            ))
+        })
+        .min()
+        .unwrap()
+}
+
+fn problem_5a(input: &str) -> u64 {
+    let captures = parse5(input);
+
+
+    find_min_seed_5(&captures, captures["seeds"]
+        .split(' ')
+        .flat_map(|num| num.parse::<u64>())
+        .map(SeedID5::new)).into()
+}
+fn problem_5b(input: &str) -> u64 {
+    let captures = parse5(input);
+
+    let re = Regex::new(r" (?<seed>\d+) (?<count>\d+)").unwrap();
+
+    find_min_seed_5(
+        &captures,
+        re.captures_iter(&captures["seeds"])
+            .flat_map(|capture| {
+                let seed = capture["seed"].parse::<u64>().unwrap();
+                let count = capture["count"].parse::<u64>().unwrap();
+                seed..seed + count
+            })
+            .map(SeedID5::new),
+    )
+    .into()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,5 +648,82 @@ Card 5: 87 83 26 28 32 | 88 30 70 12 93 22 82 36
 Card 6: 31 18 13 56 72 | 74 77 10 23 35 67 36 11";
         let result = problem_4b(input);
         assert_eq!(result, 30)
+    }
+
+    #[test]
+    fn test_problem_5a() {
+        let input = "seeds: 79 14 55 13
+
+seed-to-soil map:
+50 98 2
+52 50 48
+
+soil-to-fertilizer map:
+0 15 37
+37 52 2
+39 0 15
+
+fertilizer-to-water map:
+49 53 8
+0 11 42
+42 0 7
+57 7 4
+
+water-to-light map:
+88 18 7
+18 25 70
+
+light-to-temperature map:
+45 77 23
+81 45 19
+68 64 13
+
+temperature-to-humidity map:
+0 69 1
+1 0 69
+
+humidity-to-location map:
+60 56 37
+56 93 4";
+        let result = problem_5a(input);
+        assert_eq!(result, 35)
+    }
+    #[test]
+    fn test_problem_5b() {
+        let input = "seeds: 79 14 55 13
+
+seed-to-soil map:
+50 98 2
+52 50 48
+
+soil-to-fertilizer map:
+0 15 37
+37 52 2
+39 0 15
+
+fertilizer-to-water map:
+49 53 8
+0 11 42
+42 0 7
+57 7 4
+
+water-to-light map:
+88 18 7
+18 25 70
+
+light-to-temperature map:
+45 77 23
+81 45 19
+68 64 13
+
+temperature-to-humidity map:
+0 69 1
+1 0 69
+
+humidity-to-location map:
+60 56 37
+56 93 4";
+        let result = problem_5b(input);
+        assert_eq!(result, 46)
     }
 }
