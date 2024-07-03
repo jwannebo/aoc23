@@ -20,9 +20,9 @@
                 }
             },
             "args": [
-                "-p5",
+                "-p6",
                 "-s",
-                "-finputs/5"
+                "-finputs/6"
             ],
             "cwd": "${workspaceFolder}"
         },

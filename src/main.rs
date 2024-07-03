@@ -8,6 +8,10 @@ use clap::Parser;
 use nutype::nutype;
 use regex::*;
 
+use uom::si::acceleration::kilometer_per_second_squared;
+use uom::si::f64::*;
+use uom::si::length::millimeter;
+use uom::si::time::millisecond;
 /// Program that solves Advent of Code 2023 problems
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -25,7 +29,7 @@ struct Args {
     file: clio::Input,
 }
 
-const MAX_PROBLEM: u8 = 5;
+const MAX_PROBLEM: u8 = 6;
 
 fn main() {
     let mut args = Args::parse();
@@ -809,17 +813,87 @@ fn problem_5b(input: &str) -> u64 {
 
     min.unwrap() as u64
 }
-    find_min_seed_5(
-        &captures,
-        re.captures_iter(&captures["seeds"])
-            .flat_map(|capture| {
-                let seed = capture["seed"].parse::<u64>().unwrap();
-                let count = capture["count"].parse::<u64>().unwrap();
-                seed..seed + count
-            })
-            .map(SeedID5::new),
-    )
-    .into()
+
+struct Race6 {
+    time: Time,
+    distance: Length,
+}
+
+type TimeSquared = uom::typenum::Square<Time>;
+impl Race6 {
+    fn from_str_a(string: &str) -> Vec<Self> {
+        let mut lines = string.lines();
+        let times = lines.next().unwrap();
+        let distances = lines.next().unwrap();
+
+        times
+            .split(' ')
+            .flat_map(str::parse::<f64>)
+            .map(Time::new::<millisecond>)
+            .zip(
+                distances
+                    .split(' ')
+                    .flat_map(str::parse::<f64>)
+                    .map(Length::new::<millimeter>),
+            )
+            .map(|(time, distance)| Race6 { time, distance })
+            .collect()
+    }
+
+    fn from_str_b(string: &str) -> Self {
+        let mut lines = string.lines();
+        let time_s = lines.next().unwrap().split(':').last().unwrap();
+        let distance_s = lines.next().unwrap().split(':').last().unwrap();
+        let time = Time::new::<millisecond>(time_s.replace(' ', "").parse::<f64>().unwrap());
+        let distance =
+            Length::new::<millimeter>(distance_s.replace(' ', "").parse::<f64>().unwrap());
+        Self { time, distance }
+    }
+
+    /// Where:
+    ///
+    ///     a = acceleration
+    ///     T = total time
+    ///     c = charge time
+    ///     d = distance
+    ///
+    ///     a*c*(T-c)>d
+    ///     a*c*T-a*c*c>d
+    ///     c*T-c*c>d/a
+    ///     (-1)*c*c + (T) * c + (-d/a) > 0
+    ///
+    /// Applying the quadratic equation:
+    ///
+    ///     (-T +- sqrt(T*T-4*d/a)) / (-2) = c
+    fn solve(&self, acceleration: Acceleration) -> u64 {
+        let t_halves: Time = self.time / 2.0;
+        let sqrt_halves: Time =
+            TimeSquared::sqrt(self.time * self.time - 4.0 * self.distance / acceleration) / 2.0;
+        let highest_ms = (t_halves + sqrt_halves).get::<millisecond>();
+        let lowest_ms = (t_halves - sqrt_halves).get::<millisecond>();
+        //println!("[{},{}]", lowest_ms, highest_ms);
+        let result = (highest_ms.floor() - lowest_ms.ceil()) as u64 + 1;
+        //println!("{result}");
+        result
+    }
+}
+
+fn problem_6a(input: &str) -> u64 {
+    // 1 mm / ms^2 == 1 km / s^2
+    let acceleration: Acceleration = Acceleration::new::<kilometer_per_second_squared>(1.0);
+
+    let races = Race6::from_str_a(input);
+    races
+        .into_iter()
+        .map(|race| race.solve(acceleration))
+        .reduce(|a, b| a * b)
+        .unwrap_or(0)
+}
+
+fn problem_6b(input: &str) -> u64 {
+    // 1 mm / ms^2 == 1 km / s^2
+    let acceleration: Acceleration = Acceleration::new::<kilometer_per_second_squared>(1.0);
+    Race6::from_str_b(input).solve(acceleration)
 }
 
 #[cfg(test)]
@@ -1007,5 +1081,19 @@ humidity-to-location map:
 56 93 4";
         let result = problem_5b(input);
         assert_eq!(result, 46)
+    }
+
+    static PROBLEM_6_INPUT: &str = "Time:      7  15   30
+Distance:  9  40  200";
+
+    #[test]
+    fn test_problem_6a() {
+        let result = problem_6a(PROBLEM_6_INPUT);
+        assert_eq!(result, 288)
+    }
+    #[test]
+    fn test_problem_6b() {
+        let result = problem_6b(PROBLEM_6_INPUT);
+        assert_eq!(result, 71503)
     }
 }
