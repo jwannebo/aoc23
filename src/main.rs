@@ -75,6 +75,13 @@ fn main() {
                     println!("{}", problem_5b(&input))
                 }
             }
+            6 => {
+                if !args.subproblem {
+                    println!("{}", problem_6a(&input))
+                } else {
+                    println!("{}", problem_6b(&input))
+                }
+            }
             _ => {}
         }
     } else {
@@ -513,20 +520,295 @@ fn find_min_seed_5(captures: &Captures, seeds: impl IntoIterator<Item = SeedID5>
         .unwrap()
 }
 
+// Inefficient
 fn problem_5a(input: &str) -> u64 {
     let captures = parse5(input);
 
-
-    find_min_seed_5(&captures, captures["seeds"]
-        .split(' ')
-        .flat_map(|num| num.parse::<u64>())
-        .map(SeedID5::new)).into()
+    find_min_seed_5(
+        &captures,
+        captures["seeds"]
+            .split(' ')
+            .flat_map(|num| num.parse::<u64>())
+            .map(SeedID5::new),
+    )
+    .into()
 }
+
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+struct Rng5b<'a> {
+    start: i64,
+    last: i64,
+    parent: Option<&'a Rng5b<'a>>,
+}
+
+impl<'a> Clone for Rng5b<'a> {
+    fn clone(&self) -> Self {
+        Self {
+            start: self.start,
+            last: self.last,
+            parent: self.parent,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
+struct Map5b {
+    start: i64,
+    last: i64,
+    offset: i64,
+}
+
+impl Map5b {
+    fn from_string(string: &str) -> Map5b {
+        let mut splits = string.split(' ');
+        let dest: i64 = splits.next().unwrap().parse().unwrap();
+        let src: i64 = splits.next().unwrap().parse().unwrap();
+        let len: i64 = splits.next().unwrap().parse().unwrap();
+
+        Map5b {
+            start: src,
+            last: src + len - 1,
+            offset: dest - src,
+        }
+    }
+
+    fn range(&self) -> Range<i64> {
+        self.start..self.last + 1
+    }
+}
+
+impl<'a> Rng5b<'a> {
+    fn from_start_len<'b>(start: i64, length: i64) -> Rng5b<'b> {
+        assert!(length > 0);
+        Rng5b {
+            start,
+            last: start + length - 1,
+            parent: None,
+        }
+    }
+
+    fn new<'b>(start: i64, last: i64, parent: Option<&'b Rng5b<'b>>) -> Rng5b<'b> {
+        assert!(start <= last);
+        Rng5b {
+            start,
+            last,
+            parent,
+        }
+    }
+
+    fn range(&self) -> Range<i64> {
+        self.start..self.last + 1
+    }
+
+    fn split(&self, others: &Vec<Map5b>) -> Vec<Rng5b> {
+        let mut unprocessed = vec![self.clone()];
+        let mut processed = Vec::<Rng5b>::new();
+
+        //println!("Split [{}-{}]:", self.start, self.last);
+
+        for other in others {
+            let mut new_unprocessed = Vec::<Rng5b>::new();
+            let mut new_processed = Vec::<Rng5b>::new();
+
+            for to_split in &unprocessed {
+                let self_contains_start = to_split.range().contains(&other.start);
+                let self_contains_last = to_split.range().contains(&other.last);
+
+                match (self_contains_start, self_contains_last) {
+                    (false, false) => {
+                        //[ { } ] Self inside other
+                        if other.range().contains(&to_split.start) {
+                            new_processed.push(Rng5b::new(
+                                to_split.start + other.offset,
+                                to_split.last + other.offset,
+                                Some(self),
+                            ));
+                        //[ ] { } / { } [ ] Disjoint
+                        } else {
+                            new_unprocessed.push(Rng5b::new(
+                                to_split.start,
+                                to_split.last,
+                                Some(self),
+                            ));
+                        }
+                    }
+                    // [ { ] }
+                    (false, true) => {
+                        new_processed.push(Rng5b::new(
+                            to_split.start + other.offset,
+                            other.last + other.offset,
+                            Some(self),
+                        ));
+                        if other.last != to_split.last {
+                            new_unprocessed.push(Rng5b::new(
+                                other.last + 1,
+                                to_split.last,
+                                Some(self),
+                            ));
+                        }
+                    }
+                    // { [ } ]
+                    (true, false) => {
+                        if other.start != to_split.start {
+                            new_unprocessed.push(Rng5b::new(
+                                to_split.start,
+                                other.start - 1,
+                                Some(self),
+                            ));
+                        }
+                        new_processed.push(Rng5b::new(
+                            other.start + other.offset,
+                            to_split.last + other.offset,
+                            Some(self),
+                        ));
+                    }
+                    // { [] }
+                    (true, true) => {
+                        if other.start != to_split.start {
+                            new_unprocessed.push(Rng5b::new(
+                                to_split.start,
+                                other.start - 1,
+                                Some(self),
+                            ));
+                        }
+                        new_processed.push(Rng5b::new(
+                            other.start + other.offset,
+                            other.last + other.offset,
+                            Some(self),
+                        ));
+                        if other.last != to_split.last {
+                            new_unprocessed.push(Rng5b::new(
+                                other.last + 1,
+                                to_split.last,
+                                Some(self),
+                            ));
+                        }
+                    }
+                };
+            }
+
+            // println!("\tBy [{}-{}; {}]", other.start, other.last, other.offset);
+            // print!("\t\t Into [");
+            // for p in &new_processed {
+            //     print!("[{},{}],", p.start, p.last);
+            // }
+            // println!("]");
+            // print!("\t\t Skip [");
+            // for p in &new_unprocessed {
+            //     print!("[{},{}],", p.start, p.last);
+            // }
+            // println!("]");
+
+            unprocessed = new_unprocessed;
+            processed.append(&mut new_processed);
+        }
+
+        processed.extend(unprocessed.into_iter().map(|r| Rng5b {
+            start: r.start,
+            last: r.last,
+            parent: Some(self),
+        }));
+
+        // print!("\tFinal [");
+        // for p in &processed {
+        //     print!("[{},{}],", p.start, p.last);
+        // }
+        //println!("]");
+
+        processed
+    }
+}
+
+impl<'a> Display for Rng5b<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let parentstr = match self.parent {
+            None => String::new(),
+            Some(parent) => format!("{} -> ", parent),
+        };
+        f.write_fmt(format_args!("{}[{}-{}]", parentstr, self.start, self.last))
+    }
+}
+
 fn problem_5b(input: &str) -> u64 {
     let captures = parse5(input);
+    let mut captures_iter = captures.iter();
 
     let re = Regex::new(r" (?<seed>\d+) (?<count>\d+)").unwrap();
 
+    captures_iter.next(); // whole string
+
+    let seeds_str = &captures["seeds"];
+
+    //println!("-------------");
+
+    let seed_ranges: HashSet<_> = re
+        .captures_iter(seeds_str)
+        .map(|f| Rng5b::from_start_len(f["seed"].parse().unwrap(), f["count"].parse().unwrap()))
+        .collect();
+    //println!("-------------");
+
+    let map: Vec<_> = captures["seed_to_soil"]
+        .lines()
+        .map(Map5b::from_string)
+        .collect();
+    let soil_ranges: HashSet<_> = seed_ranges.iter().flat_map(|a| a.split(&map)).collect();
+    //println!("-------------");
+
+    let map: Vec<_> = captures["soil_to_fertilizer"]
+        .lines()
+        .map(Map5b::from_string)
+        .collect();
+    let fertilizer_ranges: HashSet<_> = soil_ranges.iter().flat_map(|a| a.split(&map)).collect();
+    //println!("-------------");
+
+    let map: Vec<_> = captures["fertilizer_to_water"]
+        .lines()
+        .map(Map5b::from_string)
+        .collect();
+    let water_ranges: HashSet<_> = fertilizer_ranges
+        .iter()
+        .flat_map(|a| a.split(&map))
+        .collect();
+    //println!("-------------");
+
+    let map: Vec<_> = captures["water_to_light"]
+        .lines()
+        .map(Map5b::from_string)
+        .collect();
+    let light_ranges: HashSet<_> = water_ranges.iter().flat_map(|a| a.split(&map)).collect();
+    // println!("-------------");
+
+    let map: Vec<_> = captures["light_to_temperature"]
+        .lines()
+        .map(Map5b::from_string)
+        .collect();
+    let temp_ranges: HashSet<_> = light_ranges.iter().flat_map(|a| a.split(&map)).collect();
+    // println!("-------------");
+
+    let map: Vec<_> = captures["temperature_to_humidity"]
+        .lines()
+        .map(Map5b::from_string)
+        .collect();
+    let himdity_ranges: HashSet<_> = temp_ranges.iter().flat_map(|a| a.split(&map)).collect();
+    // println!("-------------");
+
+    let map: Vec<_> = captures["humidity_to_location"]
+        .lines()
+        .map(Map5b::from_string)
+        .collect();
+    let location_ranges: HashSet<_> = himdity_ranges.iter().flat_map(|a| a.split(&map)).collect();
+    // println!("-------------");
+
+    // for rng in &location_ranges{
+    //     println!("{}", rng);
+    // }
+
+    let min = HashSet::<Rng5b>::iter(&location_ranges)
+        .map(|x| x.start)
+        .min();
+
+    min.unwrap() as u64
+}
     find_min_seed_5(
         &captures,
         re.captures_iter(&captures["seeds"])
@@ -690,7 +972,7 @@ humidity-to-location map:
     }
     #[test]
     fn test_problem_5b() {
-        let input = "seeds: 79 14 55 13
+        let input = "seeds: 55 13 79 14
 
 seed-to-soil map:
 50 98 2
